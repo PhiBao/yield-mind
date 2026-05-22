@@ -1,0 +1,11 @@
+{
+  "name": "yieldmind",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --filter yieldmind-frontend dev",
+    "build": "pnpm --filter yieldmind-frontend build",
+    "start": "pnpm --filter yieldmind-frontend start",
+    "test:contracts": "cd contracts && forge test",
+    "deploy:sepolia": "cd contracts && forge script script/Deploy.s.sol --rpc-url $RPC_URL --private-key $PRIVATE_KEY --broadcast"
+  }
+}

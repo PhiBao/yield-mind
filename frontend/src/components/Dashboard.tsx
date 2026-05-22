@@ -1,0 +1,149 @@
+"use client";
+
+import { useAccount } from "wagmi";
+import { useState } from "react";
+import { useVaultData } from "@/hooks/useVault";
+import { PortfolioChart } from "./PortfolioChart";
+import { VaultManager } from "./VaultManager";
+import { StrategyForm } from "./StrategyForm";
+import { PositionCard } from "./PositionCard";
+import { TerminalHeader } from "./TerminalHeader";
+import { TxToastContainer, useTxToast } from "./TransactionToast";
+import { Cpu, TrendingUp, Wallet, Shield, Activity, ArrowRight, CheckCircle } from "lucide-react";
+
+const RISK_LABELS = ["Minimal", "Conservative", "Moderate", "Aggressive", "High Yield"];
+
+function StatCard({ icon, label, value, accent = "green" }: { icon: React.ReactNode; label: string; value: string; accent?: string }) {
+  return (
+    <div className="terminal-window p-4 hover:border-terminal-green/30 transition-all duration-300">
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="stat-label">{label}</p>
+          <p className={`stat-value mt-1 ${accent === "cyan" ? "glow-text-cyan" : accent === "magenta" ? "glow-text-magenta" : "glow-text"}`}>{value}</p>
+        </div>
+        <div className={`${accent === "cyan" ? "text-terminal-cyan" : accent === "magenta" ? "text-terminal-magenta" : "text-terminal-green"} opacity-60`}>
+          {icon}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function QuickStartCard({ step, title, desc, active, done }: { step: number; title: string; desc: string; active: boolean; done: boolean }) {
+  return (
+    <div className={`flex items-center gap-4 p-4 rounded-lg border transition-all duration-300 ${
+      active
+        ? "border-terminal-green/50 bg-terminal-green/5"
+        : done
+          ? "border-terminal-green/20 bg-terminal-gray/20 opacity-70"
+          : "border-terminal-border bg-terminal-gray/20 opacity-50"
+    }`}>
+      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-mono font-bold shrink-0 ${
+        done
+          ? "bg-terminal-green/20 text-terminal-green border border-terminal-green/30"
+          : active
+            ? "bg-terminal-green/10 text-terminal-green border border-terminal-green/50 glow-text"
+            : "bg-terminal-gray/50 text-terminal-muted border border-terminal-border"
+      }`}>
+        {done ? <CheckCircle className="w-4 h-4" /> : step}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className={`text-xs font-mono font-semibold ${active ? "text-terminal-green" : done ? "text-terminal-muted" : "text-terminal-muted/60"}`}>{title}</p>
+        <p className="text-[10px] font-mono text-terminal-muted/70 mt-0.5">{desc}</p>
+      </div>
+      {active && <ArrowRight className="w-4 h-4 text-terminal-green animate-pulse shrink-0" />}
+    </div>
+  );
+}
+
+export function Dashboard() {
+  const { address, isConnected } = useAccount();
+  const vault = useVaultData();
+  const { txs, addTx, removeTx, updateTx } = useTxToast();
+
+  const hasPosition = Number(vault.userShares) > 0;
+  const hasStrategy = vault.strategy?.active ?? false;
+  const hasAllowance = !vault.needsApproval;
+
+  const currentStep = !hasPosition ? 1 : !hasAllowance ? 2 : !hasStrategy ? 3 : 4;
+
+  if (!isConnected) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="text-center max-w-md">
+          <TerminalHeader title="system: ready" subtitle="connect wallet to initialize" />
+          <div className="p-8 text-center">
+            <Cpu className="w-16 h-16 mx-auto mb-4 text-terminal-green/30" />
+            <p className="text-terminal-muted font-mono text-sm">
+              $ connect_wallet --rpc arbitrum_sepolia<br />
+              <span className="text-terminal-green">Waiting for connection...</span>
+            </p>
+            <div className="mt-4 flex justify-center gap-1">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="w-2 h-2 rounded-full bg-terminal-green/50 animate-pulse" style={{ animationDelay: `${i * 0.3}s` }} />
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <TxToastContainer txs={txs} onDismiss={removeTx} updateTx={updateTx} />
+
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+        <div className="lg:col-span-3 grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <StatCard icon={<Wallet className="w-5 h-5" />} label="Your Vault" value={`$${vault.userValue.toFixed(2)}`} />
+          <StatCard icon={<TrendingUp className="w-5 h-5" />} label="Share Price" value={`$${vault.sharePrice.toFixed(6)}`} accent="cyan" />
+          <StatCard icon={<Activity className="w-5 h-5" />} label="TVL" value={`$${Number(vault.totalAssets).toLocaleString()}`} />
+        </div>
+        <div className="terminal-window p-4 border-terminal-magenta/30">
+          <p className="stat-label mb-1">Quick Start</p>
+          <div className="space-y-2">
+            <QuickStartCard step={1} title="Deposit USDC" desc="Add funds to the vault" active={currentStep === 1} done={hasPosition} />
+            <QuickStartCard step={2} title="Set Strategy" desc="Define your risk & allocation" active={currentStep === 3} done={hasStrategy} />
+            <QuickStartCard step={3} title="Agent Monitors" desc="AI rebalances automatically" active={currentStep === 4} done={false} />
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 space-y-6">
+          <PortfolioChart currentValue={vault.userValue} sharePrice={vault.sharePrice} />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <VaultManager vault={vault} onTx={addTx} />
+            <StrategyForm vault={vault} onTx={addTx} />
+          </div>
+        </div>
+        <div className="space-y-4">
+          <PositionCard vault={vault} />
+          <div>
+            <TerminalHeader title="agent.log" subtitle="tail -f /var/log/yieldmind/agent.log" />
+            <div className="terminal-window p-4 h-[280px] overflow-y-auto">
+              <div className="space-y-2 font-mono text-xs">
+                <p className="text-terminal-green">[INFO] Agent initialized on Arbitrum Sepolia</p>
+                {hasPosition && <p className="text-terminal-cyan">[ACTION] Monitoring {hasStrategy ? 1 : 0} active position(s)</p>}
+                {!hasPosition && <p className="text-terminal-muted">[INFO] No positions found. Waiting for deposits...</p>}
+                {hasStrategy && (
+                  <>
+                    <p className="text-terminal-green">[REBALANCE] Allocation {Number(vault.strategy!.allocationBps) / 100}% growth</p>
+                    <p className="text-terminal-cyan">[ACTION] Risk level: {RISK_LABELS[vault.strategy!.riskLevel] ?? vault.strategy!.riskLevel}</p>
+                    <p className="text-terminal-muted">[INFO] Next check in ~5 min</p>
+                  </>
+                )}
+                {vault.txPending && <p className="text-terminal-amber">[WARN] Transaction pending...</p>}
+                <div className="flex items-center gap-2 mt-2 pt-2 border-t border-terminal-border">
+                  <span className="text-terminal-green animate-pulse">●</span>
+                  <span className="text-terminal-muted">Listening...</span>
+                  <span className="text-terminal-muted cursor-blink" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

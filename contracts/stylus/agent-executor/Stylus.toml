@@ -1,0 +1,2 @@
+[workspace]
+networks = { default = { endpoint = "https://sepolia-rollup.arbitrum.io/rpc" } }

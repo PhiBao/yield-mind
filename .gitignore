@@ -1,0 +1,29 @@
+node_modules/
+.next/
+dist/
+out/
+
+# Contracts
+contracts/out/
+contracts/cache/
+contracts/broadcast/
+contracts/stylus/agent-executor/target/
+
+# Env
+.env
+.env.local
+
+# Logs
+*.log
+.DS_Store
+
+# Temp / build artifacts
+*.deb
+next-env.d.ts
+
+# Coverage
+coverage/
+coverage.json
+
+# Cloudflare
+.wrangler/
