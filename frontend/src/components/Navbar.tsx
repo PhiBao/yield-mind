@@ -6,14 +6,23 @@ import { Cpu, AlertTriangle } from "lucide-react";
 
 const ARBITRUM_SEPOLIA_ID = 421614;
 const ARBITRUM_ONE_ID = 42161;
+const RHC_TESTNET_ID = 46630;
+
+function chainLabel(chainId: number): string {
+  switch (chainId) {
+    case ARBITRUM_ONE_ID: return "Arbitrum One";
+    case ARBITRUM_SEPOLIA_ID: return "Arbitrum Sepolia";
+    case RHC_TESTNET_ID: return "Robinhood Testnet";
+    default: return "Unknown";
+  }
+}
 
 export function Navbar() {
   const { isConnected } = useAccount();
   const chainId = useChainId();
   const { switchChain } = useSwitchChain();
 
-  const chainName = chainId === ARBITRUM_ONE_ID ? "Arbitrum One" : chainId === ARBITRUM_SEPOLIA_ID ? "Arbitrum Sepolia" : "Unknown";
-  const isCorrectChain = chainId === ARBITRUM_SEPOLIA_ID || chainId === ARBITRUM_ONE_ID;
+  const isCorrectChain = chainId === ARBITRUM_SEPOLIA_ID || chainId === ARBITRUM_ONE_ID || chainId === RHC_TESTNET_ID;
 
   return (
     <nav className="sticky top-0 z-50 border-b border-terminal-border bg-terminal-black/80 backdrop-blur-xl">
@@ -45,7 +54,7 @@ export function Navbar() {
             {isConnected && isCorrectChain && (
               <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-terminal-gray/50 border border-terminal-border text-xs font-mono">
                 <div className="w-1.5 h-1.5 rounded-full bg-terminal-green animate-pulse" />
-                <span className="text-terminal-muted">{chainName}</span>
+                <span className="text-terminal-muted">{chainLabel(chainId)}</span>
               </div>
             )}
             <ConnectButton

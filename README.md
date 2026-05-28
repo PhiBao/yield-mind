@@ -1,25 +1,24 @@
 # YieldMind — AI-Native Yield Automation on Arbitrum
 
 > **Built for Arbitrum Open House London Online Buildathon**
-> Tracks: Overall Prize · Best Agentic Project
+> Tracks: Overall Prize · Best Agentic Project · Dual-Chain (Arbitrum + Robinhood)
 
-YieldMind lets users deposit USDC into a vault, configure a yield strategy in natural language (or via sliders), and let an **AI agent** autonomously rebalance their position on Arbitrum.
+YieldMind lets users deposit USDC into a vault, configure a yield strategy in natural language (or via sliders), and let an **AI agent** autonomously rebalance their position. Deployed on **Arbitrum Sepolia** and **Robinhood Testnet**.
 
 ---
 
 ## Why YieldMind
 Current yield farming requires constant monitoring, gas optimization, and manual rebalancing. Retail users can't compete with sophisticated bots. Existing "auto-compounders" are rigid and don't adapt to market conditions.
 
-YieldMind solves this: **describe your strategy in plain English, and an AI agent executes it on Arbitrum.** Stacking Stylus (Rust) for gas-efficient strategy computation with Solidity for the vault layer.
+YieldMind solves this: **describe your strategy in plain English, and an AI agent executes it on Arbitrum and Robinhood.** Stacking Stylus (Rust) for gas-efficient strategy computation with Solidity for the vault layer.
 
 ---
 
 ## How YieldMind Works
 
-### User Flow (Simplified)
-
+### User Flow
 ```
-1. CONNECT       → 2. DEPLOY          → 3. CONFIGURE        → 4. AGENT RUNS
+1. CONNECT            → 2. DEPOSIT           → 3. CONFIGURE        → 4. AGENT RUNS
                       
 ┌──────────┐        ┌──────────────┐       ┌───────────────┐       ┌────────────────┐
 │ Connect   │       │ Approve USDC │       │ Set strategy  │       │ Agent monitors │
@@ -28,44 +27,19 @@ YieldMind solves this: **describe your strategy in plain English, and an AI agen
 └──────────┘        └──────────────┘       └───────────────┘       └────────────────┘
 ```
 
-### Step-by-Step
+1. **Deposit USDC** — Connect wallet, approve USDC, deposit into vault. Vault mints shares 1:1.
+2. **Set strategy** — Sliders (% growth + risk level 0–4) or natural language ("aggressive growth with high risk"). Stored on-chain in `StrategyRegistry`.
+3. **Agent rebalances** — Cloudflare Worker cron every 5 min: reads on-chain state, computes optimal allocation, submits `rebalance()` tx.
+4. **Monitor** — Dashboard shows share price, TVL, your position, 24h chart, live agent log.
 
-**Step 1 — User deposits USDC**
-The user connects their wallet (any EVM wallet via RainbowKit) and deposits USDC into the YieldMind vault. The vault mints shares 1:1 against the deposited amount, creating a transparent stake in the pool.
-
-**Step 2 — User defines a strategy**
-The user describes their desired strategy in one of two ways:
-- **Sliders**: Adjust a stable/growth allocation split (0–100%) and a risk level (Minimal through High Yield). The sliders map directly to on-chain parameters.
-- **AI Prompt**: Type natural language like *"I want balanced growth with moderate risk, 60% stable yields and 40% growth assets"*. The agent parses this via DGrid AI Gateway and auto-configures the strategy.
-
-The strategy is stored on-chain in the `StrategyRegistry` contract — immutable, transparent, and readable by anyone.
-
-**Step 3 — Agent evaluates and rebalances**
-A Cloudflare Worker runs every 5 minutes (cron: `*/5 * * * *`). Each cycle:
-
-1. Reads vault state: `totalAssets`, `totalSupply`, all user balances
-2. For each user, reads their strategy from `StrategyRegistry`
-3. Computes the optimal allocation using the Stylus (Rust) contract's gas-efficient math
-4. If the current allocation deviates beyond the configured threshold, submits a `rebalance()` transaction
-5. The vault updates the user's allocation on-chain
-
-The agent is the only address authorized to call `rebalance()`, enforced by the `onlyAgent` modifier on the vault contract.
-
-**Step 4 — User monitors**
-The frontend dashboard shows:
-- Current vault balance and share price
-- A 24-hour performance chart (reactive to live on-chain data)
-- The user's position (shares held, USD value, strategy summary)
-- A live agent log terminal showing every rebalance action in real time
-
-### Key Design Decisions
-
-| Decision | Rationale |
-|----------|-----------|
-| **Vault is simplified (no external yield sources in MVP)** | Ships fast, demonstrates full flow. Real DeFi integration (Aave/GMX) is a post-MVP milestone visible in the architecture |
-| **Agent runs on cron, not events** | Keeps $0 running cost on Cloudflare Free tier. Event-driven architecture can be added later |
-| **Stylus (Rust) for strategy math** | ~10x cheaper than Solidity for compute-heavy operations. Shows deeper Arbitrum tech stack competence |
-| **Frontend reads directly from contracts** | No backend database needed. Everything is on-chain and verifiable |
+### Design Decisions
+| Decision | Why |
+|----------|-----|
+| **Stylus (Rust) strategy math** | ~10x gas savings vs Solidity. Judge differentiator. |
+| **Dual-chain (Arbitrum + Robinhood)** | Eligibility for both prize tracks |
+| **Mock USDC on RHC testnet** | Self-contained demo — faucet mints test tokens on-chain |
+| **Agent on cron, not events** | $0 cost on Cloudflare Free tier |
+| **Frontend reads contracts directly** | No backend DB. On-chain = verifiable. |
 
 ---
 
@@ -105,251 +79,199 @@ The frontend dashboard shows:
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────────────┐
-│                    Frontend (Next.js)                    │
-│              Vercel · wagmi · RainbowKit                 │
-│           Cyberpunk terminal UI + live agent log         │
-└─────────────────────┬────────────────────────────────────┘
-                      │                         ▲
-                      ▼                         │
-┌──────────────────────────────────────────────────────────┐
-│              Agent Runner (Cloudflare Workers)           │
-│          Cron: */5 * * * *  ·  viem ·  OpenAI API        │
-│     Reads on-chain state, evaluates strategies,          │
-│     submits rebalance transactions                       │
-└─────────────────────┬────────────────────────────────────┘
-                      │                         ▲
-                      ▼                         │
-┌──────────────────────────────────────────────────────────┐
-│             Arbitrum Sepolia (Deployed)                  │
-│                                                          │
-│  ┌──────────────┐    ┌───────────────────────┐           │
-│  │    Vault     │◄──►│  StrategyRegistry     │           │
-│  │  (Solidity)  │    │   (Solidity)          │           │
-│  │  ERC4626     │    │  Per-user strategy    │           │
-│  │  Deposit/    │    │  CRUD + rebalance     │           │
-│  │  Withdraw    │    │  tracking             │           │
-│  └──────┬───────┘    └───────────────────────┘           │
-│         │                                                │
-│         ▼                                                │
-│  ┌──────────────┐                                        │
-│  │  Agent Exec. │  (Stylus - Rust)                       │
-│  │  Allocation  │  Gas-efficient strategy math           │
-│  │  Optimizer   │  Rebalance validation                  │
-│  └──────────────┘                                        │
-└──────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│                  Frontend (Next.js 15)                       │
+│          Vercel · wagmi · RainbowKit · Tailwind              │
+│         Cyberpunk terminal UI + live agent log               │
+└───────────────────────┬──────────────────────────────────────┘
+                        │                         ▲
+                        ▼                         │
+┌──────────────────────────────────────────────────────────────┐
+│              Agent Runner (Cloudflare Workers)               │
+│        Cron: */5 * * * · viem · DGrid AI Gateway             │
+│    Reads on-chain state, evaluates strategies,               │
+│    submits rebalance txns                                    │
+└───────────────────────┬──────────────────────────────────────┘
+                        │                         ▲
+                        ▼                         │
+┌──────────────────────────────────────────────────────────────┐
+│                On-Chain (Deployed)                           │
+│  ┌────────────┐  ┌──────────────────┐  ┌──────────────────┐  │
+│  │   Vault    │  │ StrategyRegistry │  │ Agent Executor   │  │
+│  │ (Solidity) │◄►│   (Solidity)     │  │  (Stylus/Rust)   │  │
+│  │ ERC4626    │  │ Per-user config  │  │ Gas-opt math     │  │
+│  └────────────┘  └──────────────────┘  └──────────────────┘  │
+│  Arbitrum Sepolia (421614)  ·  Robinhood Testnet (46630)     │
+└──────────────────────────────────────────────────────────────┘
 ```
 
-### Components
-
-| Layer | Stack | Hosting |
-|-------|-------|---------|
-| Smart contracts | Solidity 0.8.26 + Stylus (Rust) | Arbitrum Sepolia / One |
-| Frontend | Next.js 15 + wagmi + RainbowKit + Tailwind | Vercel (Hobby) → **$0** |
-| Agent runner | Cloudflare Workers cron (`*/5 * * * *`) | Cloudflare (Free) → **$0** |
-| RPC | Arbitrum public RPC / Alchemy | Free tier → **$0** |
-| AI parsing | DGrid AI Gateway (200+ models, optional) | ~$0.01/month |
+| Layer | Stack | Cost |
+|-------|-------|------|
+| Contracts | Solidity 0.8.26 + Stylus (Rust 0.10) | Gas only |
+| Frontend | Next.js 15 + wagmi + RainbowKit | Vercel Hobby → **$0** |
+| Agent | Cloudflare Workers | Free tier → **$0** |
+| RPC | Public endpoints | Free → **$0** |
+| AI | DGrid AI Gateway | ~$0.01/month |
 
 ---
 
 ## Smart Contracts
 
 ### Vault (`contracts/src/Vault.sol`)
-ERC4626-like vault accepting USDC deposits. Mints shares 1:1 on first deposit. Tracks total assets and per-user positions. Only the `agent` address can trigger rebalances.
+ERC4626-like USDC vault. Deposit → mint shares. Withdraw → burn shares. Only agent can rebalance.
 
-**Key functions:**
-| Function | Description |
-|----------|-------------|
-| `deposit(assets, receiver)` | Deposit USDC, mint shares |
-| `withdraw(assets, receiver, owner)` | Burn shares, withdraw USDC |
-| `rebalance(user, newAllocationBps)` | Agent-only: update user allocation |
-| `getUserPosition(user)` | View: returns `(shares, assets)` |
-| `convertToAssets(shares)` | View: share → asset conversion |
-
-**Access control:**
-- `onlyAgent` modifier on `rebalance()` — only the designated agent address can rebalance
-- Owner-spender allowance on shares (via `shareAllowance` mapping) — not used in MVP, reserved for future delegated management
-
-**Security:**
-- ERC20 `transfer`/`transferFrom` return values checked (`TransferFailed` revert)
-- Checked arithmetic (Solc 0.8.26 default)
-- Zero-address validation on constructor
-- Input validation on all public functions
+| Function | Access | Description |
+|----------|--------|-------------|
+| `deposit(assets, receiver)` | Public | Deposit USDC, mint shares |
+| `withdraw(assets, receiver, owner)` | Public | Burn shares, withdraw USDC |
+| `rebalance(user, newAlloc)` | Agent-only | Update allocation |
+| `getUserPosition(user)` | View | `(shares, assets)` |
 
 ### StrategyRegistry (`contracts/src/StrategyRegistry.sol`)
-Stores per-user strategy parameters. Users or the contract owner can set strategies. The vault (via `onlyVault`) can update allocation during rebalances.
-
-**Strategy struct:**
+Per-user strategy storage on-chain.
 ```solidity
 struct Strategy {
-    uint256 allocationBps;  // 0-10000 (0% to 100% growth)
-    uint8   riskLevel;      // 0-4 (Minimal to High Yield)
-    uint256 rebalanceThreshold; // minimum change to trigger rebalance
-    bool    active;         // strategy active flag
+    uint256 allocationBps;  // 0–10000 (0% to 100% growth)
+    uint8   riskLevel;      // 0–4 (Minimal → High Yield)
+    uint256 rebalanceThreshold;
+    bool    active;
 }
 ```
 
 ### Agent Executor (`contracts/stylus/agent-executor/src/lib.rs`)
-A Stylus smart contract written in Rust that:
-- Computes optimal allocations based on volatility, APY, and risk tolerance
-- Validates rebalance proposals (min 1h between rebalances, min 5% allocation change)
-- Maintains per-user allocation and risk state
+Stylus (Rust → WASM) contract for gas-efficient strategy computation:
+- `compute_optimal_allocation(user, volatility, apy, risk_tolerance)` — allocation math
+- `validate_rebalance(user, proposedAlloc)` — 1h cooldown + 5% min change
+- `execute_rebalance(user, allocBps)` — vault-only
 
-This is a **key differentiator** for judging — it demonstrates Arbitrum Stylus usage with gas-efficient Rust computation.
+### MockUSDC (`contracts/src/MockUSDC.sol`)
+Testnet-only. 6-decimals, `mint()` is open for the faucet. **Not deployed on mainnet.**
 
-### Deployed Addresses (Arbitrum Sepolia)
+---
 
-| Contract | Address | Arbiscan |
-|----------|---------|----------|
-| Vault | `0x92d7CeF16D139CB1A3a730f34361C3d56aC0d549` | [View](https://sepolia.arbiscan.io/address/0x92d7CeF16D139CB1A3a730f34361C3d56aC0d549) |
-| StrategyRegistry | `0x0211FD438051De69ba9942F0aafE950b18875073` | [View](https://sepolia.arbiscan.io/address/0x0211FD438051De69ba9942F0aafE950b18875073) |
-| Agent Executor (Stylus) | `0xe7fcf23dadab116e2adb5f3bdac4729c84e17781` | [View](https://sepolia.arbiscan.io/address/0xe7fcf23dadab116e2adb5f3bdac4729c84e17781) |
-| Agent (deployer) | `0x4Ba1e9e275EF61B56C99532D0066506436201D73` | — |
-| USDC | `0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d` | [View](https://sepolia.arbiscan.io/address/0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d) |
+## Deployed Addresses
+
+### Arbitrum Sepolia (Chain 421614)
+| Contract | Address |
+|----------|---------|
+| Vault | `0x92d7CeF16D139CB1A3a730f34361C3d56aC0d549` |
+| StrategyRegistry | `0x0211FD438051De69ba9942F0aafE950b18875073` |
+| Agent Executor (Stylus) | `0xe7fcf23dadab116e2adb5f3bdac4729c84e17781` |
+| USDC (official testnet) | `0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d` |
+
+### Robinhood Testnet (Chain 46630)
+| Contract | Address |
+|----------|---------|
+| Vault | `0xEF673BDac2C86506874919b1ad05Bd7D7fa64344` |
+| StrategyRegistry | `0xD4f72d31D66cA11Cdfd428cDc08B438D2681362B` |
+| MockUSDC | `0x6792E51FBD24f9315282BD5b6c5E713dCc779C69` |
+| Deployer | `0x4Ba1e9e275EF61B56C99532D0066506436201D73` |
 
 ---
 
 ## Frontend
 
-Cyberpunk terminal-themed dashboard built with Next.js 15.
-
-### User Flow
-
-```
-Connect Wallet → Deposit USDC → Set Strategy → Agent Monitors
-     │               │              │              │
-     │          (approve   (sliders or   (auto-rebalance
-     │           USDC first) AI mode)     every ~5 min)
-     ▼               ▼              ▼              ▼
-  RainbowKit    ApprovalGuard   StrategyForm    Agent Log
-```
-
-### Pages & Components
-
-| Component | Description |
+### Components
+| Component | What it does |
 |-----------|-------------|
-| `Navbar` | Wallet connect, network guard (red alert if wrong chain) |
+| `Navbar` | Wallet connect + chain selector (Arb Sepolia / Arb One / RHC) |
 | `Dashboard` | Stats grid, Quick Start guide, live agent log |
-| `VaultManager` | Deposit/withdraw toggle, amount input, MAX button, inline approval |
-| `ApprovalGuard` | Shows when USDC allowance is insufficient; one-click approve |
-| `StrategyForm` | Slider for stable/growth split, risk level selector, AI mode (NLP input) |
-| `PositionCard` | Shares held, USD value, active strategy summary |
-| `PortfolioChart` | 24h performance chart (reactive to live share price) |
-| `TransactionToast` | Floating notifications with real tx confirmation status |
+| `Faucet` | RHC only: one-click mint 1000 USDC + pre-approve vault |
+| `VaultManager` | Deposit / withdraw toggle, MAX button |
+| `ApprovalGuard` | Shows when allowance insufficient; inline approve |
+| `StrategyForm` | Sliders (growth % + risk) + AI natural language mode |
+| `PositionCard` | Shares, USD value, strategy summary |
+| `PortfolioChart` | 24h performance chart |
+| `TransactionToast` | Real-time tx confirmation toasts |
 
----
-
-## Agent Runner
-
-A Cloudflare Worker that runs every 5 minutes via cron trigger.
-
-### What It Does
-1. Reads vault state (`totalAssets`, `totalSupply`, user balances)
-2. Computes optimal allocation based on position size
-3. Submits `rebalance(user, newAllocationBps)` transactions
-4. Supports optional OpenAI API integration for natural language strategy parsing
-
-### API Endpoints
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/api/status` | Agent health check + contract addresses |
-| `POST` | `/api/trigger` | Manually trigger a rebalance cycle |
-| `POST` | `/api/parse-strategy` | Parse NL strategy via AI (body: `{ "text": "..." }`) |
+### Vercel Deploy
+1. Push to GitHub
+2. Import in Vercel → set **Root Directory** to `frontend/`
+3. Add env vars:
+   - `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` — from [cloud.reown.com](https://cloud.reown.com)
+   - `NEXT_PUBLIC_AGENT_URL` — (optional) your Cloudflare Worker URL for AI mode
+4. Deploy. Vercel auto-detects Next.js + pnpm.
 
 ---
 
 ## Local Development
 
-### Prerequisites
-- Node.js 18+
-- pnpm (`npm i -g pnpm`)
-- Foundry (`curl -L https://foundry.paradigm.xyz | bash && foundryup`)
-- Rust (for Stylus; `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`)
-
 ### Setup
-
 ```bash
-# Install frontend deps
+# Prerequisites: Node 18+, pnpm, Foundry, Rust
 pnpm install
-
-# Install contract deps
 cd contracts && forge install foundry-rs/forge-std && cd ..
 
-# Run contract tests
-cd contracts && forge test && cd ..
-
-# Start frontend dev server
-pnpm dev
-# → http://localhost:3000
+# Tests
+forge test        # 7/7 passing
+pnpm dev          # http://localhost:3000
 ```
 
-### Environment Variables
-
-Create `contracts/.env`:
-```env
-RPC_URL=https://sepolia-rollup.arbitrum.io/rpc
-PRIVATE_KEY=your_wallet_private_key
-```
-
-For the agent, set Cloudflare secrets:
+### Deploy contracts
 ```bash
-npx wrangler secret put AGENT_PRIVATE_KEY
-npx wrangler secret put DGRID_API_KEY  # optional
-```
-
----
-
-## Deployment
-
-```bash
-# 1. Deploy contracts
 cd contracts
-forge script script/Deploy.s.sol \
-  --rpc-url https://sepolia-rollup.arbitrum.io/rpc \
-  --broadcast
-# Update frontend/src/lib/contracts.ts with deployed addresses
+cp .env.example .env   # fill in PRIVATE_KEY
 
-# 2. Deploy frontend to Vercel
-cd frontend && npx vercel --prod
+# Arbitrum Sepolia
+forge script script/Deploy.s.sol --rpc-url arbitrum_sepolia --broadcast
 
-# 3. Deploy agent to Cloudflare
-cd agent && npx wrangler deploy
+# Robinhood Testnet
+forge script script/DeployRHC.s.sol --rpc-url $RPC_RHC --broadcast --legacy --skip-simulation
+```
+
+### Deploy Stylus contract
+```bash
+cd contracts/stylus/agent-executor
+cargo stylus deploy --no-verify \
+  --private-key $PRIVATE_KEY \
+  --endpoint $RPC_URL \
+  --wasm-file target/wasm32-unknown-unknown/release/agent_executor.wasm \
+  --max-fee-per-gas-gwei 100
+```
+
+### Deploy agent (Cloudflare Worker)
+```bash
+cd agent
+npx wrangler secret put AGENT_PRIVATE_KEY  # paste deployer key
+npx wrangler secret put DGRID_API_KEY      # optional
+npx wrangler deploy
 ```
 
 ---
 
 ## Project Structure
-
 ```
 arb/
-├── contracts/                        # Smart contracts
+├── contracts/
+│   ├── src/              # Solidity contracts
+│   │   ├── Vault.sol
+│   │   ├── StrategyRegistry.sol
+│   │   ├── MockUSDC.sol  # RHC testnet only
+│   │   └── interfaces/
+│   ├── stylus/agent-executor/  # Rust Stylus contract
+│   │   ├── src/lib.rs
+│   │   ├── Stylus.toml
+│   │   └── deploy.sh
+│   ├── script/           # Foundry deploy scripts
+│   │   ├── Deploy.s.sol       # Arb Sepolia / One
+│   │   └── DeployRHC.s.sol    # Robinhood Testnet
+│   └── test/             # 7 passing tests
+├── frontend/             # Next.js 15 dapp
 │   ├── src/
-│   │   ├── Vault.sol                # ERC4626 vault (deposit USDC, get shares)
-│   │   ├── StrategyRegistry.sol      # Per-user strategy storage
-│   │   └── interfaces/               # IERC4626, IStrategyRegistry
-│   ├── stylus/agent-executor/        # Stylus (Rust) contract
-│   │   └── src/lib.rs               # Allocation optimizer + rebalance validator
-│   ├── test/Vault.t.sol             # 7 passing tests
-│   ├── script/Deploy.s.sol          # Foundry deploy script
-│   └── foundry.toml                 # Foundry config
-├── frontend/                        # Next.js dapp
-│   └── src/
-│       ├── app/                     # Layout, page, globals.css (cyberpunk theme)
-│       ├── components/              # Dashboard, Navbar, VaultManager, etc.
-│       ├── hooks/useVault.ts        # Contract interactions (wagmi)
-│       └── lib/                     # ABI definitions, wagmi config
-├── agent/                           # Cloudflare Worker
-│   ├── src/index.ts                 # Cron agent + REST API
-│   └── wrangler.toml                # Worker config
-├── package.json                     # Root workspace
-└── pnpm-workspace.yaml             # pnpm monorepo config
+│   │   ├── app/          # Layout, page, globals.css
+│   │   ├── components/   # Dashboard, Navbar, Faucet, etc.
+│   │   ├── hooks/        # useVault.ts (wagmi)
+│   │   ├── lib/          # contracts.ts (chain-aware), wallet.tsx
+│   │   └── types/
+│   └── .env.example
+├── agent/                # Cloudflare Worker
+│   ├── src/index.ts
+│   ├── wrangler.toml
+│   └── .env.example
+└── .env.example          # Root DGRID_API_KEY
 ```
 
 ---
 
 ## License
-
 MIT — Built for Arbitrum Open House London 2026.
-
-Questions? Reach out on [Arbitrum Discord](https://discord.gg/arbitrum) or open an issue.

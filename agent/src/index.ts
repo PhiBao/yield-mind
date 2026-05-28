@@ -1,4 +1,4 @@
-import { createPublicClient, createWalletClient, http, parseUnits, formatUnits, type Address } from "viem";
+import { createPublicClient, createWalletClient, http, parseUnits, formatUnits, defineChain, type Address } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { arbitrumSepolia } from "viem/chains";
 
@@ -27,86 +27,82 @@ const VAULT_ABI = [
   { type: "function", name: "rebalance", inputs: [{ type: "address" }, { type: "uint256" }], outputs: [], stateMutability: "nonpayable" },
 ] as const;
 
-const MS_IN_5_MIN = 5 * 60 * 1000;
+const CHAIN_LABELS: Record<number, string> = {
+  42161: "Arbitrum One",
+  421614: "Arbitrum Sepolia",
+  46630: "Robinhood Testnet",
+};
+
+function getChain(chainId: number, rpcUrl: string) {
+  if (chainId === 46630) {
+    return defineChain({
+      id: 46630,
+      name: "Robinhood Testnet",
+      nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+      rpcUrls: { default: { http: [rpcUrl] } },
+    });
+  }
+  return arbitrumSepolia;
+}
 
 async function checkAndRebalance(env: Env): Promise<string[]> {
   const logs: string[] = [];
+  const chainId = Number(env.CHAIN_ID) || 421614;
+  const chainLabel = CHAIN_LABELS[chainId] ?? `Chain ${chainId}`;
 
   try {
-    const publicClient = createPublicClient({
-      chain: arbitrumSepolia,
-      transport: http(env.RPC_URL),
-    });
+    const chain = getChain(chainId, env.RPC_URL);
+    const publicClient = createPublicClient({ chain, transport: http(env.RPC_URL) });
 
     const account = privateKeyToAccount(env.AGENT_PRIVATE_KEY as `0x${string}`);
-    const walletClient = createWalletClient({
-      account,
-      chain: arbitrumSepolia,
-      transport: http(env.RPC_URL),
-    });
+    const walletClient = createWalletClient({ account, chain, transport: http(env.RPC_URL) });
 
     const vaultAddress = env.VAULT_ADDRESS as Address;
-    const stylusAddress = env.STYLUS_AGENT as Address;
 
     const totalAssets = await publicClient.readContract({
-      address: vaultAddress,
-      abi: VAULT_ABI,
-      functionName: "totalAssets",
+      address: vaultAddress, abi: VAULT_ABI, functionName: "totalAssets",
     });
-
     const totalSupply = await publicClient.readContract({
-      address: vaultAddress,
-      abi: VAULT_ABI,
-      functionName: "totalSupply",
+      address: vaultAddress, abi: VAULT_ABI, functionName: "totalSupply",
     });
 
     const sharePrice = totalSupply > 0n
       ? Number(formatUnits(totalAssets, 6)) / Number(formatUnits(totalSupply, 6))
       : 1;
 
-    logs.push(`[INFO] Vault TVL: $${formatUnits(totalAssets, 6)} | Share price: $${sharePrice.toFixed(6)}`);
+    logs.push(`[${chainLabel}] TVL: $${formatUnits(totalAssets, 6)} | Share price: $${sharePrice.toFixed(6)}`);
 
     const knownUsers = (env.WATCHED_USERS || "")
-      .split(",")
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0) as Address[];
+      .split(",").map((s) => s.trim()).filter((s) => s.length > 0) as Address[];
 
     if (knownUsers.length === 0) {
-      logs.push(`[INFO] WATCHED_USERS not set. Idle.`);
+      logs.push(`[${chainLabel}] WATCHED_USERS not set. Idle.`);
       return logs;
     }
 
     for (const user of knownUsers) {
       const shares = await publicClient.readContract({
-        address: vaultAddress,
-        abi: VAULT_ABI,
-        functionName: "balanceOf",
-        args: [user],
+        address: vaultAddress, abi: VAULT_ABI, functionName: "balanceOf", args: [user],
       });
-
       if (shares === 0n) continue;
 
       const userValue = Number(formatUnits(shares, 6)) * sharePrice;
-      logs.push(`[INFO] User ${user.slice(0, 6)}...${user.slice(-4)}: ${shares} shares ($${userValue.toFixed(2)})`);
+      logs.push(`[${chainLabel}] User ${user.slice(0, 6)}...${user.slice(-4)}: $${userValue.toFixed(2)}`);
 
       const newAllocation = computeOptimalAllocation(shares, sharePrice);
-      logs.push(`[ACTION] Rebalancing ${user.slice(0, 6)}... to ${newAllocation}% growth allocation`);
+      logs.push(`[${chainLabel}] Rebalancing to ${newAllocation}% growth`);
 
       const txHash = await walletClient.writeContract({
-        address: vaultAddress,
-        abi: VAULT_ABI,
-        functionName: "rebalance",
-        args: [user, BigInt(newAllocation)],
-        account,
+        address: vaultAddress, abi: VAULT_ABI, functionName: "rebalance",
+        args: [user, BigInt(newAllocation)], account,
       });
-
-      logs.push(`[REBALANCE] Tx: ${txHash} for ${user.slice(0, 6)}... → ${newAllocation} bps`);
+      logs.push(`[${chainLabel}] Tx: ${txHash} → ${newAllocation} bps`);
     }
 
-    logs.push(`[INFO] Cycle complete. Next check in ~5 min.`);
+    logs.push(`[${chainLabel}] Cycle complete.`);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    logs.push(`[ERROR] ${message}`);
+    logs.push(`[${chainLabel} ERROR] ${message}`);
   }
 
   return logs;
@@ -152,12 +148,15 @@ Respond with JSON only: { "allocationBps": number, "riskLevel": number }`,
   return JSON.parse(data.choices[0].message.content);
 }
 
+async function runChain(env: Env, chainLabel: string): Promise<string[]> {
+  const logs = await checkAndRebalance(env);
+  return logs.map((l) => `[${chainLabel}] ${l}`);
+}
+
 export default {
   async scheduled(_event: ScheduledEvent, env: Env, _ctx: ExecutionContext): Promise<void> {
     const logs = await checkAndRebalance(env);
-    for (const log of logs) {
-      console.log(log);
-    }
+    for (const log of logs) console.log(log);
   },
 
   async fetch(request: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
@@ -170,11 +169,12 @@ export default {
     }
 
     if (request.method === "GET" && url.pathname === "/api/status") {
+      const chainId = Number(env.CHAIN_ID) || 421614;
       return Response.json({
         status: "ok",
-        chain: arbitrumSepolia.name,
+        chain: CHAIN_LABELS[chainId] ?? `Chain ${chainId}`,
         vault: env.VAULT_ADDRESS,
-        stylus: env.STYLUS_AGENT,
+        chainId,
         timestamp: Date.now(),
       });
     }

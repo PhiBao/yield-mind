@@ -1,10 +1,36 @@
-export const VAULT_ADDRESS = "0x92d7CeF16D139CB1A3a730f34361C3d56aC0d549";
-export const STRATEGY_REGISTRY_ADDRESS = "0x0211FD438051De69ba9942F0aafE950b18875073";
+const ARB_MAINNET = 42161;
+const ARB_SEPOLIA = 421614;
+const RHC_TESTNET = 46630;
+
+export const SUPPORTED_CHAINS = [ARB_SEPOLIA, RHC_TESTNET, ARB_MAINNET] as const;
+
+export const VAULT_ADDRESSES: Record<number, `0x${string}`> = {
+  [ARB_SEPOLIA]: "0x92d7CeF16D139CB1A3a730f34361C3d56aC0d549",
+  [RHC_TESTNET]: "0xEF673BDac2C86506874919b1ad05Bd7D7fa64344",
+};
+
+export const STRATEGY_REGISTRY_ADDRESSES: Record<number, `0x${string}`> = {
+  [ARB_SEPOLIA]: "0x0211FD438051De69ba9942F0aafE950b18875073",
+  [RHC_TESTNET]: "0xD4f72d31D66cA11Cdfd428cDc08B438D2681362B",
+};
 
 export const USDC_ADDRESSES: Record<number, `0x${string}`> = {
-  42161: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
-  421614: "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d",
+  [ARB_MAINNET]: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+  [ARB_SEPOLIA]: "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d",
+  [RHC_TESTNET]: "0x6792E51FBD24f9315282BD5b6c5E713dCc779C69",
 };
+
+export function getVaultAddress(chainId: number): `0x${string}` {
+  return VAULT_ADDRESSES[chainId] ?? "0x";
+}
+
+export function getStrategyRegistryAddress(chainId: number): `0x${string}` {
+  return STRATEGY_REGISTRY_ADDRESSES[chainId] ?? "0x";
+}
+
+export function getUsdcAddress(chainId: number): `0x${string}` {
+  return USDC_ADDRESSES[chainId] ?? "0x";
+}
 
 export const VAULT_ABI = [
   {

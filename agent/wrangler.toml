@@ -1,8 +1,8 @@
 name = "yieldmind-agent"
 main = "src/index.ts"
 compatibility_date = "2024-10-01"
+workers_dev = true
 
-# Cron trigger every 5 minutes
 [triggers]
 crons = ["*/5 * * * *"]
 
@@ -12,12 +12,14 @@ STRATEGY_REGISTRY = "0x0211FD438051De69ba9942F0aafE950b18875073"
 STYLUS_AGENT = "0xe7fcf23dadab116e2adb5f3bdac4729c84e17781"
 RPC_URL = "https://sepolia-rollup.arbitrum.io/rpc"
 CHAIN_ID = "421614"
-AGENT_PRIVATE_KEY = ""
 DGRID_API_KEY = ""
 WATCHED_USERS = ""
 
-[env.staging]
-vars = { ENVIRONMENT = "staging" }
-
-[env.production]
-vars = { ENVIRONMENT = "production" }
+[env.rhc.vars]
+VAULT_ADDRESS = "0xEF673BDac2C86506874919b1ad05Bd7D7fa64344"
+STRATEGY_REGISTRY = "0xD4f72d31D66cA11Cdfd428cDc08B438D2681362B"
+STYLUS_AGENT = "0x0000000000000000000000000000000000000000"
+RPC_URL = "https://rpc.testnet.chain.robinhood.com"
+CHAIN_ID = "46630"
+DGRID_API_KEY = ""
+WATCHED_USERS = ""

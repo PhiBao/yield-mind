@@ -12,14 +12,36 @@ contract DeployScript is Script {
     function run() external {
         uint256 deployerKey = vm.envUint("PRIVATE_KEY");
         address deployer = vm.addr(deployerKey);
+        uint256 chainId = block.chainid;
 
+        if (chainId != 421614 && chainId != 42161 && chainId != 46630) {
+            revert("Unsupported chain");
+        }
+
+        // Pick USDC address based on chain
+        address usdc;
+        string memory chainName;
+        if (chainId == 421614) {
+            usdc = USDC_ARBITRUM_SEPOLIA;
+            chainName = "Arbitrum Sepolia";
+        } else if (chainId == 42161) {
+            usdc = USDC_ARBITRUM_ONE;
+            chainName = "Arbitrum One";
+        } else {
+            // RHC testnet — set USDC in .env override
+            string memory envUsdc = vm.envOr("USDC_ADDRESS", string(""));
+            usdc = vm.parseAddress(envUsdc);
+            chainName = "Robinhood Testnet";
+        }
+
+        console.log("Chain:               %s (%d)", chainName, chainId);
         console.log("Deployer address:", deployer);
         console.log("Deployer balance (ETH):", deployer.balance);
 
         vm.startBroadcast(deployerKey);
 
         StrategyRegistry registry = new StrategyRegistry(address(0));
-        Vault vault = new Vault(USDC_ARBITRUM_SEPOLIA, deployer, address(registry));
+        Vault vault = new Vault(usdc, deployer, address(registry));
         registry.setVault(address(vault));
 
         vm.stopBroadcast();
@@ -28,15 +50,8 @@ contract DeployScript is Script {
         console.log("=== DEPLOYMENT COMPLETE ===");
         console.log("Vault:              ", address(vault));
         console.log("StrategyRegistry:   ", address(registry));
-        console.log("Asset (USDC):        ", USDC_ARBITRUM_SEPOLIA);
+        console.log("Asset (USDC):        ", usdc);
         console.log("Agent (deployer):     ", deployer);
         console.log("");
-        console.log("Run verification:");
-        console.log("forge verify-contract", address(vault), "src/Vault.sol:Vault --chain arbitrum-sepolia");
-        console.log("forge verify-contract", address(registry), "src/StrategyRegistry.sol:StrategyRegistry --chain arbitrum-sepolia");
-        console.log("");
-        console.log("To verify the vault->registry link, run:");
-        console.log("cast call", address(vault), '"strategyRegistry()(address)" --rpc-url arbitrum_sepolia');
-        console.log("cast call", address(registry), '"vault()(address)" --rpc-url arbitrum_sepolia');
     }
 }

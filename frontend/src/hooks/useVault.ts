@@ -1,7 +1,7 @@
 "use client";
 
 import { useReadContract, useWriteContract, useAccount } from "wagmi";
-import { VAULT_ADDRESS, VAULT_ABI, STRATEGY_REGISTRY_ADDRESS, STRATEGY_REGISTRY_ABI, ERC20_ABI, USDC_ADDRESSES } from "@/lib/contracts";
+import { getVaultAddress, VAULT_ABI, getStrategyRegistryAddress, STRATEGY_REGISTRY_ABI, ERC20_ABI, getUsdcAddress } from "@/lib/contracts";
 import { formatUnits, parseUnits, type Address } from "viem";
 import { useState, useCallback } from "react";
 import type { StrategyData } from "@/types";
@@ -10,28 +10,31 @@ export function useVaultData() {
   const { address, chainId } = useAccount();
   const [txPending, setTxPending] = useState(false);
 
-  const usdcAddress = (chainId ? USDC_ADDRESSES[chainId] : undefined) ?? "0x";
+  const vaultAddress = getVaultAddress(chainId ?? 0);
+  const registryAddress = getStrategyRegistryAddress(chainId ?? 0);
+  const usdcAddress = getUsdcAddress(chainId ?? 0);
+  const isSupported = chainId ? vaultAddress !== "0x" && registryAddress !== "0x" : false;
 
   const { data: totalAssets, refetch: refetchAssets } = useReadContract({
-    address: VAULT_ADDRESS,
+    address: vaultAddress,
     abi: VAULT_ABI,
     functionName: "totalAssets",
-    query: { refetchInterval: 15_000 },
+    query: { enabled: isSupported, refetchInterval: 15_000 },
   });
 
   const { data: totalSupply } = useReadContract({
-    address: VAULT_ADDRESS,
+    address: vaultAddress,
     abi: VAULT_ABI,
     functionName: "totalSupply",
-    query: { refetchInterval: 15_000 },
+    query: { enabled: isSupported, refetchInterval: 15_000 },
   });
 
   const { data: userShares, refetch: refetchShares } = useReadContract({
-    address: VAULT_ADDRESS,
+    address: vaultAddress,
     abi: VAULT_ABI,
     functionName: "balanceOf",
     args: address ? [address] : undefined,
-    query: { enabled: !!address, refetchInterval: 15_000 },
+    query: { enabled: !!address && isSupported, refetchInterval: 15_000 },
   });
 
   const { data: usdcBalance } = useReadContract({
@@ -39,23 +42,23 @@ export function useVaultData() {
     abi: ERC20_ABI,
     functionName: "balanceOf",
     args: address ? [address] : undefined,
-    query: { enabled: !!address, refetchInterval: 15_000 },
+    query: { enabled: !!address && usdcAddress !== "0x", refetchInterval: 15_000 },
   });
 
   const { data: usdcAllowance, refetch: refetchAllowance } = useReadContract({
     address: usdcAddress,
     abi: ERC20_ABI,
     functionName: "allowance",
-    args: address ? [address, VAULT_ADDRESS] : undefined,
-    query: { enabled: !!address, refetchInterval: 10_000 },
+    args: address ? [address, vaultAddress] : undefined,
+    query: { enabled: !!address && isSupported, refetchInterval: 10_000 },
   });
 
   const { data: userStrategy, refetch: refetchStrategy } = useReadContract({
-    address: STRATEGY_REGISTRY_ADDRESS,
+    address: registryAddress,
     abi: STRATEGY_REGISTRY_ABI,
     functionName: "getStrategy",
     args: address ? [address] : undefined,
-    query: { enabled: !!address },
+    query: { enabled: !!address && isSupported },
   });
 
   const { writeContractAsync } = useWriteContract();
@@ -66,7 +69,7 @@ export function useVaultData() {
     try {
       const assets = parseUnits(amount, 6);
       const hash = await writeContractAsync({
-        address: VAULT_ADDRESS,
+        address: vaultAddress,
         abi: VAULT_ABI,
         functionName: "deposit",
         args: [assets, address],
@@ -75,7 +78,7 @@ export function useVaultData() {
     } finally {
       setTxPending(false);
     }
-  }, [address, writeContractAsync]);
+  }, [address, vaultAddress, writeContractAsync]);
 
   const withdraw = useCallback(async (amount: string): Promise<`0x${string}`> => {
     if (!address) throw new Error("Wallet not connected");
@@ -83,7 +86,7 @@ export function useVaultData() {
     try {
       const assets = parseUnits(amount, 6);
       const hash = await writeContractAsync({
-        address: VAULT_ADDRESS,
+        address: vaultAddress,
         abi: VAULT_ABI,
         functionName: "withdraw",
         args: [assets, address, address],
@@ -92,30 +95,30 @@ export function useVaultData() {
     } finally {
       setTxPending(false);
     }
-  }, [address, writeContractAsync]);
+  }, [address, vaultAddress, writeContractAsync]);
 
   const approve = useCallback(async (amount: string): Promise<`0x${string}`> => {
     if (!address) throw new Error("Wallet not connected");
     setTxPending(true);
     try {
       const hash = await writeContractAsync({
-        address: usdcAddress as Address,
+        address: usdcAddress,
         abi: ERC20_ABI,
         functionName: "approve",
-        args: [VAULT_ADDRESS, parseUnits(amount, 6)],
+        args: [vaultAddress, parseUnits(amount, 6)],
       });
       return hash;
     } finally {
       setTxPending(false);
     }
-  }, [address, usdcAddress, writeContractAsync]);
+  }, [address, usdcAddress, vaultAddress, writeContractAsync]);
 
   const setStrategy = useCallback(async (allocationBps: number, riskLevel: number) => {
     if (!address) throw new Error("Wallet not connected");
     setTxPending(true);
     try {
       const hash = await writeContractAsync({
-        address: STRATEGY_REGISTRY_ADDRESS,
+        address: registryAddress,
         abi: STRATEGY_REGISTRY_ABI,
         functionName: "setStrategy",
         args: [address, { allocationBps: BigInt(allocationBps), riskLevel, rebalanceThreshold: BigInt(100), active: true }],
@@ -124,7 +127,7 @@ export function useVaultData() {
     } finally {
       setTxPending(false);
     }
-  }, [address, writeContractAsync]);
+  }, [address, registryAddress, writeContractAsync]);
 
   const getSharePrice = (): number => {
     if (!totalAssets || !totalSupply || totalSupply === 0n) return 1;

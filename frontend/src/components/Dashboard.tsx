@@ -1,6 +1,6 @@
 "use client";
 
-import { useAccount } from "wagmi";
+import { useAccount, useChainId } from "wagmi";
 import { useState } from "react";
 import { useVaultData } from "@/hooks/useVault";
 import { PortfolioChart } from "./PortfolioChart";
@@ -10,8 +10,11 @@ import { PositionCard } from "./PositionCard";
 import { TerminalHeader } from "./TerminalHeader";
 import { TxToastContainer, useTxToast } from "./TransactionToast";
 import { Cpu, TrendingUp, Wallet, Shield, Activity, ArrowRight, CheckCircle } from "lucide-react";
+import { Faucet } from "./Faucet";
 
 const RISK_LABELS = ["Minimal", "Conservative", "Moderate", "Aggressive", "High Yield"];
+
+const CHAIN_LABELS: Record<number, string> = { 42161: "Arbitrum One", 421614: "Arbitrum Sepolia", 46630: "Robinhood Testnet" };
 
 function StatCard({ icon, label, value, accent = "green" }: { icon: React.ReactNode; label: string; value: string; accent?: string }) {
   return (
@@ -58,6 +61,7 @@ function QuickStartCard({ step, title, desc, active, done }: { step: number; tit
 
 export function Dashboard() {
   const { address, isConnected } = useAccount();
+  const chainId = useChainId();
   const vault = useVaultData();
   const { txs, addTx, removeTx, updateTx } = useTxToast();
 
@@ -93,6 +97,8 @@ export function Dashboard() {
     <div className="space-y-6">
       <TxToastContainer txs={txs} onDismiss={removeTx} updateTx={updateTx} />
 
+      <Faucet onTx={addTx} />
+
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
         <div className="lg:col-span-3 grid grid-cols-1 sm:grid-cols-3 gap-4">
           <StatCard icon={<Wallet className="w-5 h-5" />} label="Your Vault" value={`$${vault.userValue.toFixed(2)}`} />
@@ -123,7 +129,7 @@ export function Dashboard() {
             <TerminalHeader title="agent.log" subtitle="tail -f /var/log/yieldmind/agent.log" />
             <div className="terminal-window p-4 h-[280px] overflow-y-auto">
               <div className="space-y-2 font-mono text-xs">
-                <p className="text-terminal-green">[INFO] Agent initialized on Arbitrum Sepolia</p>
+                <p className="text-terminal-green">[INFO] Agent initialized on {CHAIN_LABELS[chainId] ?? "Unknown Network"}</p>
                 {hasPosition && <p className="text-terminal-cyan">[ACTION] Monitoring {hasStrategy ? 1 : 0} active position(s)</p>}
                 {!hasPosition && <p className="text-terminal-muted">[INFO] No positions found. Waiting for deposits...</p>}
                 {hasStrategy && (
