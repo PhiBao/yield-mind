@@ -65,6 +65,7 @@ export function useVaultData() {
 
   const deposit = useCallback(async (amount: string): Promise<`0x${string}`> => {
     if (!address) throw new Error("Wallet not connected");
+    if (!isSupported) throw new Error("Unsupported chain. Switch to Arbitrum Sepolia or Robinhood Testnet.");
     setTxPending(true);
     try {
       const assets = parseUnits(amount, 6);
@@ -82,6 +83,7 @@ export function useVaultData() {
 
   const withdraw = useCallback(async (amount: string): Promise<`0x${string}`> => {
     if (!address) throw new Error("Wallet not connected");
+    if (!isSupported) throw new Error("Unsupported chain.");
     setTxPending(true);
     try {
       const assets = parseUnits(amount, 6);
@@ -99,6 +101,7 @@ export function useVaultData() {
 
   const approve = useCallback(async (amount: string): Promise<`0x${string}`> => {
     if (!address) throw new Error("Wallet not connected");
+    if (!isSupported) throw new Error("Unsupported chain.");
     setTxPending(true);
     try {
       const hash = await writeContractAsync({
@@ -115,6 +118,7 @@ export function useVaultData() {
 
   const setStrategy = useCallback(async (allocationBps: number, riskLevel: number) => {
     if (!address) throw new Error("Wallet not connected");
+    if (!isSupported) throw new Error("Unsupported chain.");
     setTxPending(true);
     try {
       const hash = await writeContractAsync({
